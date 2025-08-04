@@ -7,7 +7,7 @@ A lightweight, educational high-frequency trading (HFT) simulator written in mod
 3. Feed the data into a pluggable trading engine
 4. Implement and evaluate multiple trading strategies (Trend-Following, Mean-Reversion, Arbitrage)
 
-The goal is not to create a production-ready trading system, but rather a concise, resume-worthy project that touches on networking, data-parsing, algorithmic decision-making, and clean software design.
+The goal is not to create a production-ready trading system, but rather a concise project that touches on networking, data-parsing, algorithmic decision-making, and clean software design.
 
 ---
 
