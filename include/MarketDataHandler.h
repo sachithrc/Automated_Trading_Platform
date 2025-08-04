@@ -1,39 +1,46 @@
 #ifndef MARKET_DATA_HANDLER_H
 #define MARKET_DATA_HANDLER_H
-using namespace std;
-#include <string>
-#include <cstdlib> //for getenv
-#include <vector>  // For storing market data
 
-// Define a struct for market data
+#include <string>
+#include <cstdlib>  // for getenv
+#include <vector>   // for std::vector
+
+// ---------------------------------------------------------------------------
+// Data structures
+// ---------------------------------------------------------------------------
 struct MarketData {
-    string timestamp;  // Timestamp of the data point
-    string symbol;     // Stock symbol (e.g., AAPL)
-    double price;           // Price of the stock
-    int volume;             // Volume traded
+    std::string timestamp;  // Timestamp of the data point
+    std::string symbol;     // Stock symbol
+    double      price;      // Price of the stock
+    int         volume;     // Volume traded
 };
 
-// Class to handle market data operations
+// ---------------------------------------------------------------------------
+// MarketDataHandler
+// ---------------------------------------------------------------------------
 class MarketDataHandler {
 public:
-    // Constructor: Initialize with the API key in src file not her 
+    // Constructor (retrieves API key from environment)
     MarketDataHandler();
 
-    // Method to fetch market data from the API
-    void fetchMarketData(const string& symbol, vector<MarketData>& marketDataVec);
+    // Destructor (cleans up libcurl global state)
+    ~MarketDataHandler();
 
-    // Method to distribute the parsed data to the trading engine (or any other consumer)
-    void distributeData(const vector<MarketData>& marketDataVec);
+    // Fetch intraday market data for a given symbol. Results are appended to
+    // 'marketDataVec'.
+    void fetchMarketData(const std::string& symbol, std::vector<MarketData>& marketDataVec);
+
+    // Print or forward the data to any downstream consumer (currently console)
+    void distributeData(const std::vector<MarketData>& marketDataVec);
 
 private:
+    std::string apiKey; // AlphaVantage API key
 
-    string apiKey;  // Stores the API key
+    // Perform a blocking HTTP GET request and return the raw response body
+    std::string makeApiRequest(const std::string& url);
 
-    // Helper method to make HTTP requests
-    string makeApiRequest(const string& url);
-
-    // Helper method to parse the JSON response
-    void parseMarketData(const string& jsonResponse, vector<MarketData>& marketDataVec);
+    // Parse raw JSON into a vector of MarketData objects
+    void parseMarketData(const std::string& jsonResponse, std::vector<MarketData>& marketDataVec);
 };
 
 #endif // MARKET_DATA_HANDLER_H

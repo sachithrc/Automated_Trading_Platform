@@ -9,19 +9,26 @@
 #include <sstream>
 #include <nlohmann/json.hpp>
 #include <vector>
+#include <algorithm>  // for std::sort
 using json = nlohmann::json;
 using namespace std;
 
-// Constructor: Initialize with the API key
-MarketDataHandler::MarketDataHandler()
-{  
-    const char* key = getenv("API_KEY");
-    if(key){//getting key from env file
-        apiKey = string(key);
+// Constructor: Initialize with the API key and set up global libcurl
+MarketDataHandler::MarketDataHandler() {
+    const char* key = std::getenv("API_KEY");
+    if (key) {
+        apiKey = std::string(key);
+    } else {
+        std::cerr << "[WARN] Environment variable API_KEY is not set. Using empty key – request will fail." << std::endl;
     }
-    else{
-        cerr << "Error" << endl;
-    }
+
+    // Initialise libcurl only once for the lifetime of this object
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+}
+
+// Destructor: clean up global libcurl state
+MarketDataHandler::~MarketDataHandler() {
+    curl_global_cleanup();
 }
 
 // Method to fetch market data from the API
@@ -57,8 +64,7 @@ void MarketDataHandler::distributeData(const vector<MarketData>& marketDataVec) 
 // Helper method to make HTTP requests
 string MarketDataHandler::makeApiRequest(const string& url) {
     // Set up and execute the HTTP GET request:
-    //Initialize curl library. CURL_GLOBAL_DEFAULT initializes SSL for HTTPS request. The function global init creates the environment for the paramter.
-    curl_global_init(CURL_GLOBAL_DEFAULT); //VERY IMPORPTANT INT MAIN NOT HERE
+
     //Create a curl handle: A curl handle is used to configure requests. You control how libcurl interacts with remote servers using this handle
     CURL *handle = curl_easy_init(); //Making a pointer named handler of the type CURL (which is a struct)
     if (!handle){
@@ -74,8 +80,15 @@ string MarketDataHandler::makeApiRequest(const string& url) {
     //curl_easy_setopt is used to tell libcurl how to behave. By setting the appropriate options, the application can change libcurl's behavior. 
     //All options are set with an option followed by a parameter.
 
-    //setting url request
-    curl_easy_setopt(handle, CURLOPT_URL, url.c_str()); //Setting the url to request. You are telling the program, "This is the URL I want to request"
+    // set request parameters
+    curl_easy_setopt(handle, CURLOPT_URL, url.c_str());
+
+    // Disable HTTP/2 to avoid rare crashes in some libcurl builds on macOS
+    curl_easy_setopt(handle, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+
+    // Follow HTTP redirects automatically (convenience)
+    curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
+
 
 
     //callback function: A callback function is a function that is passed as an argument to another function and is expected to be called (or "called back") at a specific point in the execution of that function. 
@@ -104,7 +117,6 @@ string MarketDataHandler::makeApiRequest(const string& url) {
 
     //cleaning up whatever was in curl library if everything was successful
     curl_easy_cleanup(handle);
-    curl_global_cleanup(); //VERY IMPORTANT ADD THIS TO INT MAIN AND REMOVE FROM HERE. THIS SHOULD GO AT THE END OF INT MAIN
 
 
     // If successful return the response as a string
@@ -113,28 +125,41 @@ string MarketDataHandler::makeApiRequest(const string& url) {
 
 // Helper method to parse the JSON response
 void MarketDataHandler::parseMarketData(const string& jsonResponse, vector<MarketData>& marketDataVec) {
-    // Parse the JSON response and extract the relevant fields
     try {
         auto j = json::parse(jsonResponse);
-        for (const auto& item : j) {
+
+        // Alpha Vantage intraday endpoint nests the datapoints under "Time Series (5min)"
+        if (!j.contains("Time Series (5min)")) {
+            std::cerr << "[WARN] Unexpected JSON format – missing 'Time Series (5min)' field." << std::endl;
+            return;
+        }
+
+        const auto& timeSeries = j["Time Series (5min)"];
+        for (auto it = timeSeries.begin(); it != timeSeries.end(); ++it) {
             MarketData data;
-            data.timestamp = item.value("timestamp", "");
-            data.symbol = item.value("symbol", "");
-            data.price = item.value("price", 0.0);
-            data.volume = item.value("volume", 0);
+            data.timestamp = it.key();
+            data.symbol = ""; // Caller can overwrite if desired
+
+            try {
+                // All numeric values are returned as strings – convert them.
+                data.price  = std::stod(it.value().value("4. close", "0"));
+                data.volume = std::stoi(it.value().value("5. volume", "0"));
+            } catch (const std::exception& e) {
+                std::cerr << "[WARN] Failed to convert price/volume to numeric type: " << e.what() << std::endl;
+                continue;
+            }
 
             marketDataVec.push_back(data);
-
         }
+
+        // Sort datapoints chronologically (earliest first)
+        std::sort(marketDataVec.begin(), marketDataVec.end(),
+                  [](const MarketData& a, const MarketData& b) { return a.timestamp < b.timestamp; });
     }
-    catch (json::parse_error& e) {
+    catch (const json::parse_error& e) {
         std::cerr << "JSON parse error: " << e.what() << '\n';
-    } 
-    catch (json::type_error& e) {
-        std::cerr << "Type error in JSON data: " << e.what() << '\n';
-    } 
-    catch (std::exception& e) {
-        std::cerr << "Exception: " << e.what() << '\n';
     }
-    
+    catch (const std::exception& e) {
+        std::cerr << "Exception while parsing market data: " << e.what() << '\n';
+    }
 }

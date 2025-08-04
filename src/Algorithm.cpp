@@ -100,4 +100,4 @@ void TradingEngine::processData(const MarketData& data) {
     }
 }
 
-} // namespace trading
+}

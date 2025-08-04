@@ -1,2 +1,21 @@
-docs
+# Documentation and editor settings
+docs/
 .vscode
+
+# Build artifacts
+build/
+
+# Runtime logs (generated at runtime)
+logs/
+*.log
+
+# Local libraries / temp libs
+lib/
+
+# Local configuration (API keys, env files)
+.env
+config/
+
+# OS files
+.DS_Store
+
